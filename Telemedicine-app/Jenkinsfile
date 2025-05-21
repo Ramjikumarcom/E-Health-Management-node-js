@@ -33,6 +33,7 @@ pipeline {
                 
                 // Debug: List directory contents
                 sh 'ls -la'
+                sh 'find . -name "Telemedicine-app/docker-compose.yml" || echo "docker-compose.yml not found"'
             }
         }
         
@@ -56,16 +57,29 @@ REACT_APP_API_BASE_URL=${env.REACT_APP_API_BASE_URL}
             }
         }
         
-        stage('Build with Docker Compose') {
+        stage('Build Docker Images') {
             steps {
                 script {
                     // Login to Docker Hub
                     sh 'echo $DOCKERHUB_CREDENTIALS_PSW | docker login -u $DOCKER_USERNAME --password-stdin'
                     
-                    // Build images using docker-compose
-                    sh 'docker compose build || docker-compose build'
+                    // Check if Docker is installed
+                    sh 'docker --version || echo "Docker not installed"'
                     
-                    echo "Successfully built all images with Docker Compose"
+                    // Check if docker-compose.yml exists
+                    sh 'cat docker-compose.yml || echo "docker-compose.yml not found"'
+                    
+                    // Build backend image directly with Docker
+                    sh """
+                    docker build -t ${DOCKER_USERNAME}/e_health_management_backend:${APP_VERSION} .
+                    """
+                    
+                    // Build frontend image directly with Docker
+                    sh """
+                    docker build -t ${DOCKER_USERNAME}/e_health_management_frontend:${APP_VERSION} -f client/Dockerfile client/
+                    """
+                    
+                    echo "Successfully built Docker images"
                 }
             }
         }
@@ -73,9 +87,6 @@ REACT_APP_API_BASE_URL=${env.REACT_APP_API_BASE_URL}
         stage('Push Images to Docker Hub') {
             steps {
                 script {
-                    // Push MongoDB image
-                    sh "docker push $DOCKER_USERNAME/e_health_management:$APP_VERSION"
-                    
                     // Push backend image
                     sh "docker push $DOCKER_USERNAME/e_health_management_backend:$APP_VERSION"
                     
@@ -90,9 +101,23 @@ REACT_APP_API_BASE_URL=${env.REACT_APP_API_BASE_URL}
         stage('Deploy') {
             steps {
                 script {
-                    // Deploy using Docker Compose
-                    sh 'docker compose down -v || docker-compose down -v || true'
-                    sh 'docker compose up -d || docker-compose up -d'
+                    // Deploy using Docker run commands instead of docker-compose
+                    sh """
+                    # Stop and remove existing containers
+                    docker stop e_health_backend || true
+                    docker stop e_health_frontend || true
+                    docker rm e_health_backend || true
+                    docker rm e_health_frontend || true
+                    
+                    # Run MongoDB container
+                    docker run -d --name mongodb -p 27017:27017 mongo:latest
+                    
+                    # Run backend container
+                    docker run -d --name e_health_backend -p 5000:5000 --env-file .env --link mongodb:mongodb ${DOCKER_USERNAME}/e_health_management_backend:${APP_VERSION}
+                    
+                    # Run frontend container
+                    docker run -d --name e_health_frontend -p 3000:3000 --env-file client/.env --link e_health_backend:backend ${DOCKER_USERNAME}/e_health_management_frontend:${APP_VERSION}
+                    """
                     
                     echo "Application deployed successfully"
                 }
