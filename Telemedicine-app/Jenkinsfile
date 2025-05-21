@@ -30,6 +30,9 @@ pipeline {
                     url: "${GITHUB_REPO}"
                 
                 echo "Successfully cloned repository from GitHub"
+                
+                // Debug: List directory contents
+                sh 'ls -la'
             }
         }
         
@@ -60,7 +63,7 @@ REACT_APP_API_BASE_URL=${env.REACT_APP_API_BASE_URL}
                     sh 'echo $DOCKERHUB_CREDENTIALS_PSW | docker login -u $DOCKER_USERNAME --password-stdin'
                     
                     // Build images using docker-compose
-                    sh 'docker compose build'
+                    sh 'docker compose build || docker-compose build'
                     
                     echo "Successfully built all images with Docker Compose"
                 }
@@ -88,8 +91,8 @@ REACT_APP_API_BASE_URL=${env.REACT_APP_API_BASE_URL}
             steps {
                 script {
                     // Deploy using Docker Compose
-                    sh 'docker compose down -v || true'
-                    sh 'docker compose up -d'
+                    sh 'docker compose down -v || docker-compose down -v || true'
+                    sh 'docker compose up -d || docker-compose up -d'
                     
                     echo "Application deployed successfully"
                 }
