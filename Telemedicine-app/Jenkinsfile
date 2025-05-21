@@ -23,7 +23,7 @@ pipeline {
         stage('Checkout from GitHub') {
             steps {
                 // Clean workspace before checkout
-                cleanWs()
+                deleteDir()
                 
                 // Checkout code from GitHub repository
                 git branch: "${GITHUB_BRANCH}", 
