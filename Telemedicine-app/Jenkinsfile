@@ -1,0 +1,131 @@
+pipeline {
+    agent any
+    
+    environment {
+        // Docker Hub credentials ID as configured in Jenkins
+        DOCKERHUB_CREDENTIALS = credentials('dockerhub-credentials')
+        // Your Docker Hub username
+        DOCKER_USERNAME = 'gupta9939'
+        // Application version/tag
+        APP_VERSION = '02'
+        // GitHub repository URL
+        GITHUB_REPO = 'https://github.com/Ramjikumarcom/E-Health-Management-node-js.git'
+        // GitHub branch
+        GITHUB_BRANCH = 'main'
+        // Environment variables for the application
+        MONGO_URI = 'mongodb://mongodb:27017/telemedicine'
+        JWT_SECRET = credentials('jwt-secret-key')
+        PORT = '5000'
+        REACT_APP_API_BASE_URL = 'http://localhost:5000'
+        // Cloudinary Configuration
+        CLOUDINARY_CLOUD_NAME = credentials('cloudinary-cloud-name')
+        CLOUDINARY_API_KEY = credentials('cloudinary-api-key')
+        CLOUDINARY_API_SECRET = credentials('cloudinary-api-secret')
+    }
+    
+    stages {
+        stage('Checkout from GitHub') {
+            steps {
+                // Clean workspace before checkout
+                cleanWs()
+                
+                // Checkout code from GitHub repository
+                git branch: "${GITHUB_BRANCH}", 
+                    url: "${GITHUB_REPO}"
+                
+                echo "Successfully cloned repository from GitHub"
+            }
+        }
+        
+        stage('Create Environment Files') {
+            steps {
+                script {
+                    // Create backend .env file
+                    writeFile file: '.env', text: """
+MONGO_URI=${env.MONGO_URI}
+JWT_SECRET=${env.JWT_SECRET}
+PORT=${env.PORT}
+CLOUDINARY_CLOUD_NAME=${env.CLOUDINARY_CLOUD_NAME}
+CLOUDINARY_API_KEY=${env.CLOUDINARY_API_KEY}
+CLOUDINARY_API_SECRET=${env.CLOUDINARY_API_SECRET}
+"""
+                    
+                    // Create frontend .env file
+                    writeFile file: 'client/.env', text: """
+REACT_APP_API_BASE_URL=${env.REACT_APP_API_BASE_URL}
+REACT_APP_CLOUDINARY_CLOUD_NAME=${env.CLOUDINARY_CLOUD_NAME}
+REACT_APP_CLOUDINARY_UPLOAD_PRESET=telemedicine_uploads
+"""
+                    
+                    echo "Environment files created successfully"
+                }
+            }
+        }
+        
+        stage('Build with Docker Compose') {
+            steps {
+                script {
+                    // Login to Docker Hub
+                    sh 'echo $DOCKERHUB_CREDENTIALS_PSW | docker login -u $DOCKER_USERNAME --password-stdin'
+                    
+                    // Build images using docker-compose
+                    sh 'docker compose build'
+                    
+                    echo "Successfully built all images with Docker Compose"
+                }
+            }
+        }
+        
+        stage('Push Images to Docker Hub') {
+            steps {
+                script {
+                    // Push MongoDB image
+                    sh "docker push $DOCKER_USERNAME/e_health_management:$APP_VERSION"
+                    
+                    // Push backend image
+                    sh "docker push $DOCKER_USERNAME/e_health_management_backend:$APP_VERSION"
+                    
+                    // Push frontend image
+                    sh "docker push $DOCKER_USERNAME/e_health_management_frontend:$APP_VERSION"
+                    
+                    echo "Successfully pushed all images to Docker Hub"
+                }
+            }
+        }
+        
+        stage('Deploy') {
+            steps {
+                script {
+                    // Deploy using Docker Compose
+                    sh 'docker compose down -v || true'
+                    sh 'docker compose up -d'
+                    
+                    echo "Application deployed successfully"
+                }
+            }
+        }
+    }
+    
+    post {
+        always {
+            // Logout from Docker Hub
+            sh 'docker logout'
+            
+            // Clean up unused Docker resources
+            sh 'docker system prune -af --volumes || true'
+            
+            // Clean up sensitive files
+            sh 'rm -f .env client/.env || true'
+            
+            echo "Pipeline completed - cleanup executed"
+        }
+        
+        success {
+            echo 'Deployment completed successfully!'
+        }
+        
+        failure {
+            echo 'Deployment failed! Check logs for details.'
+        }
+    }
+}
