@@ -41,14 +41,14 @@ pipeline {
             steps {
                 script {
                     // Create backend .env file
-                    writeFile file: '.env', text: """
+                    writeFile file: 'Telemedicine-app/.env', text: """
 MONGO_URI=${env.MONGO_URI}
 JWT_SECRET=${env.JWT_SECRET}
 PORT=${env.PORT}
 """
                     
                     // Create frontend .env file
-                    writeFile file: 'client/.env', text: """
+                    writeFile file: 'Telemedicine-app/client/.env', text: """
 REACT_APP_API_BASE_URL=${env.REACT_APP_API_BASE_URL}
 """
                     
@@ -66,17 +66,22 @@ REACT_APP_API_BASE_URL=${env.REACT_APP_API_BASE_URL}
                     // Check if Docker is installed
                     sh 'docker --version || echo "Docker not installed"'
                     
-                    // Check if docker-compose.yml exists
-                    sh 'cat docker-compose.yml || echo "docker-compose.yml not found"'
+                    // List directory contents to debug
+                    sh 'ls -la Telemedicine-app/'
+                    sh 'ls -la Telemedicine-app/client/ || echo "Client directory not found"'
+                    
+                    // Check if Dockerfile exists
+                    sh 'cat Telemedicine-app/Dockerfile || echo "Dockerfile not found"'
+                    sh 'cat Telemedicine-app/client/Dockerfile || echo "Client Dockerfile not found"'
                     
                     // Build backend image directly with Docker
                     sh """
-                    docker build -t ${DOCKER_USERNAME}/e_health_management_backend:${APP_VERSION} .
+                    cd Telemedicine-app && docker build -t ${DOCKER_USERNAME}/e_health_management_backend:${APP_VERSION} .
                     """
                     
                     // Build frontend image directly with Docker
                     sh """
-                    docker build -t ${DOCKER_USERNAME}/e_health_management_frontend:${APP_VERSION} -f client/Dockerfile client/
+                    cd Telemedicine-app && docker build -t ${DOCKER_USERNAME}/e_health_management_frontend:${APP_VERSION} -f client/Dockerfile client/
                     """
                     
                     echo "Successfully built Docker images"
@@ -113,10 +118,10 @@ REACT_APP_API_BASE_URL=${env.REACT_APP_API_BASE_URL}
                     docker run -d --name mongodb -p 27017:27017 mongo:latest
                     
                     # Run backend container
-                    docker run -d --name e_health_backend -p 5000:5000 --env-file .env --link mongodb:mongodb ${DOCKER_USERNAME}/e_health_management_backend:${APP_VERSION}
+                    docker run -d --name e_health_backend -p 5000:5000 --env-file Telemedicine-app/.env --link mongodb:mongodb ${DOCKER_USERNAME}/e_health_management_backend:${APP_VERSION}
                     
                     # Run frontend container
-                    docker run -d --name e_health_frontend -p 3000:3000 --env-file client/.env --link e_health_backend:backend ${DOCKER_USERNAME}/e_health_management_frontend:${APP_VERSION}
+                    docker run -d --name e_health_frontend -p 3000:3000 --env-file Telemedicine-app/client/.env --link e_health_backend:backend ${DOCKER_USERNAME}/e_health_management_frontend:${APP_VERSION}
                     """
                     
                     echo "Application deployed successfully"
@@ -134,7 +139,7 @@ REACT_APP_API_BASE_URL=${env.REACT_APP_API_BASE_URL}
             sh 'docker system prune -af --volumes || true'
             
             // Clean up sensitive files
-            sh 'rm -f .env client/.env || true'
+            sh 'rm -f Telemedicine-app/.env Telemedicine-app/client/.env || true'
             
             echo "Pipeline completed - cleanup executed"
         }
