@@ -1,0 +1,36 @@
+---
+# Frontend container deployment
+- name: Pull frontend image
+  docker_image:
+    name: "{{ docker_username }}/e_health_management_frontend:{{ app_version }}"
+    source: pull
+    force_source: yes
+
+- name: Create frontend environment file
+  copy:
+    dest: "{{ playbook_dir }}/../.env.frontend"
+    content: |
+      REACT_APP_API_BASE_URL={{ react_app_api_base_url }}
+    mode: '0644'
+
+- name: Stop and remove existing frontend container
+  docker_container:
+    name: e_health_frontend
+    state: absent
+    force_kill: yes
+  ignore_errors: true
+
+- name: Start frontend container
+  docker_container:
+    name: e_health_frontend
+    image: "{{ docker_username }}/e_health_management_frontend:{{ app_version }}"
+    state: started
+    restart_policy: unless-stopped
+    published_ports:
+      - "{{ frontend_port }}:3000"
+    env_file: "{{ playbook_dir }}/../.env.frontend"
+    networks:
+      - name: telemedicine-network
+    networks_cli_compatible: yes
+    links:
+      - "e_health_backend:backend"

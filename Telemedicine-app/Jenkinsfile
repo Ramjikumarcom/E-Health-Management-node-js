@@ -112,7 +112,43 @@ REACT_APP_API_BASE_URL=${env.REACT_APP_API_BASE_URL}
             }
         }
         
-        stage('Deploy') {
+        stage('Install Ansible') {
+            steps {
+                script {
+                    // Install Ansible if not already installed
+                    sh '''
+                    if ! command -v ansible &> /dev/null; then
+                        echo "Installing Ansible..."
+                        apt-get update -y || true
+                        apt-get install -y ansible python3-pip || true
+                        pip3 install docker || true
+                    else
+                        echo "Ansible is already installed"
+                    fi
+                    ansible --version
+                    '''
+                }
+            }
+        }
+        
+        stage('Deploy with Ansible') {
+            steps {
+                script {
+                    // Run Ansible playbook
+                    sh '''
+                    cd Telemedicine-app/ansible
+                    ansible-playbook -i inventory.ini site.yml -c local
+                    '''
+                    
+                    echo "Application deployed successfully with Ansible"
+                }
+            }
+        }
+        
+        stage('Deploy with Docker (Fallback)') {
+            when {
+                expression { return false } // Disabled by default, enable if Ansible deployment fails
+            }
             steps {
                 script {
                     // Deploy using Docker run commands instead of docker-compose
@@ -135,7 +171,7 @@ REACT_APP_API_BASE_URL=${env.REACT_APP_API_BASE_URL}
                     docker run -d --name e_health_frontend -p 3000:3000 --env-file Telemedicine-app/client/.env --link e_health_backend:backend ${DOCKER_USERNAME}/e_health_management_frontend:${APP_VERSION}
                     """
                     
-                    echo "Application deployed successfully"
+                    echo "Application deployed successfully with Docker"
                 }
             }
         }

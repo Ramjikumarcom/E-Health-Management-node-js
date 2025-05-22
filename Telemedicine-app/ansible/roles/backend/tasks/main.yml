@@ -1,0 +1,38 @@
+---
+# Backend container deployment
+- name: Pull backend image
+  docker_image:
+    name: "{{ docker_username }}/e_health_management_backend:{{ app_version }}"
+    source: pull
+    force_source: yes
+
+- name: Create backend environment file
+  copy:
+    dest: "{{ playbook_dir }}/../.env.backend"
+    content: |
+      MONGO_URI={{ mongo_uri }}
+      JWT_SECRET={{ jwt_secret }}
+      PORT={{ backend_port }}
+    mode: '0644'
+
+- name: Stop and remove existing backend container
+  docker_container:
+    name: e_health_backend
+    state: absent
+    force_kill: yes
+  ignore_errors: true
+
+- name: Start backend container
+  docker_container:
+    name: e_health_backend
+    image: "{{ docker_username }}/e_health_management_backend:{{ app_version }}"
+    state: started
+    restart_policy: unless-stopped
+    published_ports:
+      - "{{ backend_port }}:5000"
+    env_file: "{{ playbook_dir }}/../.env.backend"
+    networks:
+      - name: telemedicine-network
+    networks_cli_compatible: yes
+    links:
+      - "mongodb:mongodb"
