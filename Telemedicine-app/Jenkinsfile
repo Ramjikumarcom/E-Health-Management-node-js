@@ -153,13 +153,22 @@ REACT_APP_API_BASE_URL=${env.REACT_APP_API_BASE_URL}
         stage('Deploy to Kubernetes') {
             steps {
                 script {
-                    // Use the system's kubectl directly with minikube context
+                    // Set up proper Kubernetes context and authentication
                     sh """
-                    # Verify minikube is running
-                    minikube status
+                    # Print current context and available contexts
+                    echo "Current Kubernetes context:"
+                    kubectl config current-context
+                    echo "Available Kubernetes contexts:"
+                    kubectl config get-contexts
+                    
+                    # Ensure we're using minikube context
+                    kubectl config use-context minikube
                     
                     # Create namespace if it doesn't exist
                     kubectl get namespace ${K8S_NAMESPACE} || kubectl create namespace ${K8S_NAMESPACE}
+                    
+                    # Verify connectivity to the cluster
+                    kubectl cluster-info
                     """
                     
                     // Make deploy.sh executable
@@ -168,11 +177,23 @@ REACT_APP_API_BASE_URL=${env.REACT_APP_API_BASE_URL}
                     chmod +x deploy.sh
                     '''
                     
-                    // Run the deploy.sh script
-                    sh '''
+                    // Run the deploy.sh script with explicit namespace
+                    sh """
                     cd Telemedicine-app/kubernetes
-                    ./deploy.sh
-                    '''
+                    
+                    # Add debug output to deploy.sh
+                    echo '#!/bin/bash' > deploy_debug.sh
+                    echo 'set -x' >> deploy_debug.sh
+                    cat deploy.sh >> deploy_debug.sh
+                    chmod +x deploy_debug.sh
+                    
+                    # Run with debug output
+                    ./deploy_debug.sh
+                    
+                    # Verify deployment
+                    echo "Verifying deployment in namespace ${K8S_NAMESPACE}:"
+                    kubectl get all -n ${K8S_NAMESPACE}
+                    """
                     
                     echo "Application deployed successfully to Kubernetes"
                 }
