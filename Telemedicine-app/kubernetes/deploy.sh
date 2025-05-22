@@ -11,7 +11,12 @@ export KUBECTL_INTERACTIVE=false
 kubectl get namespace e-health 2>/dev/null || kubectl create namespace e-health
 
 # Apply all resources using kustomize
+echo "Applying Kubernetes resources..."
 kubectl apply -k . --force
+
+# Display what was deployed
+echo "Resources created:"
+kubectl get all -n e-health
 
 # Wait for deployments to be ready
 echo "Waiting for deployments to be ready..."
