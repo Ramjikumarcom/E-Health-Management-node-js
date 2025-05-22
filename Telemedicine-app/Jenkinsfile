@@ -127,13 +127,16 @@ REACT_APP_API_BASE_URL=${env.REACT_APP_API_BASE_URL}
                     kubectl version --client || echo "kubectl not installed"
                     '''
                     
-                    // Install kubectl if not available
+                    // Install kubectl if not available (without using sudo)
                     sh '''
                     if ! command -v kubectl &> /dev/null; then
                         echo "Installing kubectl..."
                         curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
                         chmod +x kubectl
-                        sudo mv kubectl /usr/local/bin/
+                        mkdir -p ${HOME}/.local/bin
+                        mv kubectl ${HOME}/.local/bin/
+                        export PATH=${HOME}/.local/bin:$PATH
+                        echo "kubectl installed to ${HOME}/.local/bin/kubectl"
                     fi
                     '''
                 }
@@ -163,8 +166,14 @@ REACT_APP_API_BASE_URL=${env.REACT_APP_API_BASE_URL}
             }
             steps {
                 script {
+                    // Ensure kubectl is in PATH
+                    sh '''
+                    export PATH=${HOME}/.local/bin:$PATH
+                    '''
+                    
                     // Verify kubectl can connect to the cluster
                     sh '''
+                    export PATH=${HOME}/.local/bin:$PATH
                     kubectl cluster-info || {
                         echo "Error: Cannot connect to Kubernetes cluster"
                         exit 1
@@ -173,11 +182,13 @@ REACT_APP_API_BASE_URL=${env.REACT_APP_API_BASE_URL}
                     
                     // Check if namespace exists and create it if not
                     sh '''
+                    export PATH=${HOME}/.local/bin:$PATH
                     kubectl get namespace telemedicine || kubectl create namespace telemedicine
                     '''
                     
                     // Create base64 encoded JWT secret
                     sh '''
+                    export PATH=${HOME}/.local/bin:$PATH
                     JWT_SECRET_BASE64=$(echo -n "$JWT_SECRET" | base64)
                     
                     # Update the secret.yaml file with the actual JWT secret
@@ -192,6 +203,7 @@ REACT_APP_API_BASE_URL=${env.REACT_APP_API_BASE_URL}
                     
                     // Check if ingress controller is installed
                     sh '''
+                    export PATH=${HOME}/.local/bin:$PATH
                     if ! kubectl get ingressclass 2>/dev/null | grep -q "nginx"; then
                         echo "Warning: No ingress controller found. You may need to install one."
                         echo "For example: kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-v1.8.2/deploy/static/provider/cloud/deploy.yaml"
@@ -200,12 +212,14 @@ REACT_APP_API_BASE_URL=${env.REACT_APP_API_BASE_URL}
                     
                     // Deploy using the deploy.sh script
                     sh '''
+                    export PATH=${HOME}/.local/bin:$PATH
                     cd Telemedicine-app/kubernetes
                     ./deploy.sh
                     '''
                     
                     // Verify deployment
                     sh '''
+                    export PATH=${HOME}/.local/bin:$PATH
                     echo "Checking deployment status..."
                     kubectl get pods -n telemedicine
                     kubectl get svc -n telemedicine
