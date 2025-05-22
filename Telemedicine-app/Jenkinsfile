@@ -172,6 +172,17 @@ REACT_APP_API_BASE_URL=${env.REACT_APP_API_BASE_URL}
         stage('Deploy to Kubernetes') {
             steps {
                 script {
+                    // Get the Jenkins service account token for Kubernetes authentication
+                    sh """
+                    # Get the Jenkins service account token
+                    JENKINS_TOKEN=\$(kubectl get secret \$(kubectl get serviceaccount jenkins -o jsonpath='{.secrets[0].name}') -o jsonpath='{.data.token}' | base64 --decode)
+                    
+                    # Set the token in KUBECONFIG
+                    kubectl config set-credentials jenkins --token=\$JENKINS_TOKEN
+                    kubectl config set-context jenkins-context --cluster=minikube --user=jenkins
+                    kubectl config use-context jenkins-context
+                    """
+                    
                     // Create Kubernetes namespace if it doesn't exist
                     sh """
                     kubectl get namespace ${K8S_NAMESPACE} || kubectl create namespace ${K8S_NAMESPACE}
