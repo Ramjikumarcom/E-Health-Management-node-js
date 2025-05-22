@@ -17,6 +17,8 @@ pipeline {
         JWT_SECRET = 'your_jwt_secret_key_here'
         PORT = '5000'
         REACT_APP_API_BASE_URL = 'http://localhost:5000'
+        // Kubernetes namespace
+        K8S_NAMESPACE = 'e-health'
     }
     
     stages {
@@ -141,6 +143,46 @@ REACT_APP_API_BASE_URL=${env.REACT_APP_API_BASE_URL}
                     '''
                     
                     echo "Application deployed successfully with Ansible"
+                }
+            }
+        }
+        
+        stage('Deploy to Kubernetes') {
+            steps {
+                script {
+                    // Check if kubectl is installed
+                    sh '''
+                    if ! command -v kubectl &> /dev/null; then
+                        echo "kubectl is not installed. Skipping Kubernetes deployment."
+                        exit 0
+                    fi
+                    kubectl version --client
+                    '''
+                    
+                    // Create Kubernetes namespace if it doesn't exist
+                    sh """
+                    kubectl get namespace ${K8S_NAMESPACE} || kubectl create namespace ${K8S_NAMESPACE}
+                    """
+                    
+                    // Apply Kubernetes manifests
+                    sh '''
+                    cd Telemedicine-app/kubernetes
+                    kubectl apply -k .
+                    '''
+                    
+                    // Wait for deployments to be ready
+                    sh """
+                    kubectl -n ${K8S_NAMESPACE} wait --for=condition=available --timeout=300s deployment/mongodb || true
+                    kubectl -n ${K8S_NAMESPACE} wait --for=condition=available --timeout=300s deployment/backend || true
+                    kubectl -n ${K8S_NAMESPACE} wait --for=condition=available --timeout=300s deployment/frontend || true
+                    """
+                    
+                    // Display running pods
+                    sh """
+                    kubectl -n ${K8S_NAMESPACE} get pods
+                    """
+                    
+                    echo "Application deployed successfully to Kubernetes"
                 }
             }
         }
