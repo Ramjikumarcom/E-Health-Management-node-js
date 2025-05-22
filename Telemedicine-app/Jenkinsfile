@@ -159,6 +159,9 @@ REACT_APP_API_BASE_URL=${env.REACT_APP_API_BASE_URL}
                     
                     # Update the secret.yaml file with the actual JWT secret
                     sed -i "s/JWT_SECRET: .*/JWT_SECRET: $JWT_SECRET_BASE64/" Telemedicine-app/kubernetes/secret.yaml
+                    
+                    # Make the deploy.sh script executable
+                    chmod +x Telemedicine-app/kubernetes/deploy.sh
                     '''
                     
                     // Deploy using the deploy.sh script
