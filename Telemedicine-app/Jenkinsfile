@@ -153,86 +153,36 @@ REACT_APP_API_BASE_URL=${env.REACT_APP_API_BASE_URL}
         stage('Deploy to Kubernetes') {
             steps {
                 script {
-                    // Set up proper Kubernetes context and authentication
-                    sh """
-                    # Print current context and available contexts
-                    echo "Current Kubernetes context:"
-                    kubectl config current-context || true
-                    echo "Available Kubernetes contexts:"
-                    kubectl config get-contexts || true
-                    
-                    # Create namespace if it doesn't exist
-                    kubectl get namespace ${K8S_NAMESPACE} || kubectl create namespace ${K8S_NAMESPACE}
-                    
-                    # Verify connectivity to the cluster
-                    kubectl cluster-info
-                    """
-                    
-                    // Use the Jenkins service account token for authentication
+                    // Use kubectl directly without a custom kubeconfig
                     sh '''
-                    # Apply the Jenkins service account if it doesn't exist
-                    kubectl apply -f ${WORKSPACE}/Telemedicine-app/kubernetes/jenkins-serviceaccount.yaml
+                    # Create namespace if it doesn't exist
+                    kubectl get namespace e-health || kubectl create namespace e-health
                     
-                    # Wait for the service account token to be created
-                    sleep 5
+                    # Make sure we're using the right context
+                    echo "Current kubectl context:"
+                    kubectl config current-context
                     
-                    # Get the token from the Jenkins service account
-                    TOKEN=$(kubectl get secret $(kubectl get serviceaccount jenkins -o jsonpath='{.secrets[0].name}') -o jsonpath='{.data.token}' | base64 --decode)
-                    
-                    # Create a kubeconfig file using the service account token
-                    cat > ${WORKSPACE}/kubeconfig << EOF
-apiVersion: v1
-kind: Config
-clusters:
-- cluster:
-    server: $(kubectl config view --minify -o jsonpath='{.clusters[0].cluster.server}')
-    insecure-skip-tls-verify: true
-  name: kubernetes
-contexts:
-- context:
-    cluster: kubernetes
-    user: jenkins
-  name: jenkins-context
-current-context: jenkins-context
-preferences: {}
-users:
-- name: jenkins
-  user:
-    token: ${TOKEN}
-EOF
-                    
-                    chmod 600 ${WORKSPACE}/kubeconfig
-                    
-                    # Test the kubeconfig
-                    KUBECONFIG=${WORKSPACE}/kubeconfig kubectl get nodes
-                    
+                    # Show cluster info
+                    kubectl cluster-info
                     '''
                     
                     // Make deploy.sh executable
                     sh '''
-                    cd Telemedicine-app/kubernetes
+                    cd ${WORKSPACE}/Telemedicine-app/kubernetes
                     chmod +x deploy.sh
                     '''
                     
-                    // Run the deploy.sh script with explicit kubeconfig
+                    // Run the deploy.sh script without custom kubeconfig
                     sh """
-                    export KUBECONFIG=${WORKSPACE}/kubeconfig
                     cd ${WORKSPACE}/Telemedicine-app/kubernetes
                     
-                    # Run deploy script with explicit kubeconfig and skip prompts
-                    KUBECONFIG=${WORKSPACE}/kubeconfig KUBECTL_INTERACTIVE=false ./deploy.sh
+                    # Run deploy script with system kubeconfig
+                    ./deploy.sh
                     
                     # Verify deployment
                     echo "Verifying deployment in namespace ${K8S_NAMESPACE}:"
-                    KUBECONFIG=${WORKSPACE}/kubeconfig kubectl get all -n ${K8S_NAMESPACE}
+                    kubectl get all -n ${K8S_NAMESPACE}
                     """
-                    
-                    // Clean up kubeconfig
-                    sh """
-                    rm -f ${WORKSPACE}/kubeconfig
-                    """
-                    
-                    echo "Application deployed successfully to Kubernetes"
                 }
             }
         }
