@@ -171,7 +171,7 @@ REACT_APP_API_BASE_URL=${env.REACT_APP_API_BASE_URL}
                     // Copy kubeconfig from host to Jenkins workspace
                     sh '''
                     # Copy kubeconfig from host
-                    cp -f ~/.kube/config ${WORKSPACE}/kubeconfig
+                    cp -f /home/ramji/.kube/config ${WORKSPACE}/kubeconfig
                     chmod 600 ${WORKSPACE}/kubeconfig
                     '''
                     
@@ -184,7 +184,7 @@ REACT_APP_API_BASE_URL=${env.REACT_APP_API_BASE_URL}
                     // Run the deploy.sh script with explicit kubeconfig
                     sh """
                     export KUBECONFIG=${WORKSPACE}/kubeconfig
-                    cd Telemedicine-app/kubernetes
+                    cd ${WORKSPACE}/Telemedicine-app/kubernetes
                     
                     # Run deploy script with explicit kubeconfig
                     KUBECONFIG=${WORKSPACE}/kubeconfig ./deploy.sh
