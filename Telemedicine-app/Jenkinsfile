@@ -20,7 +20,9 @@ pipeline {
         // Deployment method: 'ansible', 'kubernetes', or 'docker'
         DEPLOYMENT_METHOD = 'kubernetes'
         // Kubernetes config credentials
-        KUBECONFIG = credentials('kubeconfig-credentials')
+        KUBECONFIG = credentials('kubeconfig-credential')
+        // Ansible inventory path
+        ANSIBLE_INVENTORY = 'Telemedicine-app/ansible/inventory.ini'
     }
     
     stages {
@@ -121,7 +123,15 @@ REACT_APP_API_BASE_URL=${env.REACT_APP_API_BASE_URL}
                 script {
                     // Verify Ansible is available
                     sh '''
-                    ansible --version || echo "Ansible not working properly"
+                    ansible --version || {
+                        echo "Ansible not installed or not working properly. Installing Ansible..."
+                        pip install --user ansible
+                        export PATH=$PATH:$HOME/.local/bin
+                        ansible --version || {
+                            echo "Failed to install Ansible. Exiting."
+                            exit 1
+                        }
+                    }
                     '''
                     
                     // Check if kubectl is installed (for Kubernetes deployment)
@@ -151,10 +161,126 @@ REACT_APP_API_BASE_URL=${env.REACT_APP_API_BASE_URL}
             }
             steps {
                 script {
-                    // Run Ansible playbook
+                    // Check if inventory file exists
                     sh '''
+                    if [ ! -f "${ANSIBLE_INVENTORY}" ]; then
+                        echo "Ansible inventory file not found at ${ANSIBLE_INVENTORY}"
+                        echo "Creating default inventory file..."
+                        mkdir -p $(dirname ${ANSIBLE_INVENTORY})
+                        echo "[local]" > ${ANSIBLE_INVENTORY}
+                        echo "localhost ansible_connection=local" >> ${ANSIBLE_INVENTORY}
+                    fi
+                    
+                    # Check if ansible directory exists
+                    if [ ! -d "Telemedicine-app/ansible" ]; then
+                        echo "Ansible directory not found. Creating basic structure..."
+                        mkdir -p Telemedicine-app/ansible/roles/{mongodb,backend,frontend}/tasks
+                        
+                        # Create main playbook
+                        cat > Telemedicine-app/ansible/site.yml << 'EOF'
+---
+- name: Deploy E-Health Management Application
+  hosts: local
+  become: false
+  vars:
+    docker_username: ${DOCKER_USERNAME}
+    app_version: ${APP_VERSION}
+    mongo_uri: ${MONGO_URI}
+    jwt_secret: ${JWT_SECRET}
+    port: ${PORT}
+    react_app_api_base_url: ${REACT_APP_API_BASE_URL}
+  
+  roles:
+    - mongodb
+    - backend
+    - frontend
+EOF
+                        
+                        # Create MongoDB role
+                        cat > Telemedicine-app/ansible/roles/mongodb/tasks/main.yml << 'EOF'
+---
+- name: Create Docker network
+  shell: docker network create telemedicine-network || true
+  
+- name: Run MongoDB container
+  shell: >
+    docker stop mongodb || true &&
+    docker rm mongodb || true &&
+    docker run -d --name mongodb -p 27017:27017 
+    --network telemedicine-network 
+    {{ docker_username }}/e_health_management:{{ app_version }}
+EOF
+                        
+                        # Create Backend role
+                        cat > Telemedicine-app/ansible/roles/backend/tasks/main.yml << 'EOF'
+---
+- name: Run Backend container
+  shell: >
+    docker stop e_health_backend || true &&
+    docker rm e_health_backend || true &&
+    docker run -d --name e_health_backend -p 5000:5000 
+    -e MONGO_URI="{{ mongo_uri }}" 
+    -e JWT_SECRET="{{ jwt_secret }}" 
+    -e PORT="{{ port }}" 
+    --network telemedicine-network 
+    {{ docker_username }}/e_health_management_backend:{{ app_version }}
+EOF
+                        
+                        # Create Frontend role
+                        cat > Telemedicine-app/ansible/roles/frontend/tasks/main.yml << 'EOF'
+---
+- name: Run Frontend container
+  shell: >
+    docker stop e_health_frontend || true &&
+    docker rm e_health_frontend || true &&
+    docker run -d --name e_health_frontend -p 3000:3000 
+    -e REACT_APP_API_BASE_URL="{{ react_app_api_base_url }}" 
+    --network telemedicine-network 
+    {{ docker_username }}/e_health_management_frontend:{{ app_version }}
+EOF
+                    fi
+                    '''
+                    
+                    // Run Ansible playbook with proper error handling
+                    sh '''
+                    export PATH=$PATH:$HOME/.local/bin
                     cd Telemedicine-app/ansible
-                    ansible-playbook -i inventory.ini site.yml -c local
+                    
+                    # Check if playbook exists
+                    if [ ! -f "site.yml" ]; then
+                        echo "Ansible playbook not found!"
+                        exit 1
+                    fi
+                    
+                    # Run playbook with verbose output for debugging
+                    ansible-playbook -i ${ANSIBLE_INVENTORY} site.yml -c local -v
+                    
+                    # Verify deployment
+                    echo "Verifying deployment..."
+                    docker ps | grep mongodb
+                    docker ps | grep e_health_backend
+                    docker ps | grep e_health_frontend
+                    
+                    # Check if containers are running
+                    if ! docker ps | grep -q e_health_frontend; then
+                        echo "Frontend container not running. Checking logs..."
+                        docker logs e_health_frontend || true
+                        exit 1
+                    fi
+                    
+                    if ! docker ps | grep -q e_health_backend; then
+                        echo "Backend container not running. Checking logs..."
+                        docker logs e_health_backend || true
+                        exit 1
+                    fi
+                    
+                    if ! docker ps | grep -q mongodb; then
+                        echo "MongoDB container not running. Checking logs..."
+                        docker logs mongodb || true
+                        exit 1
+                    fi
+                    
+                    echo "All containers are running successfully!"
                     '''
                     
                     echo "Application deployed successfully with Ansible"
