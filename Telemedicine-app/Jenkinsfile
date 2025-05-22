@@ -202,6 +202,10 @@ users:
 EOF
                     
                     chmod 600 ${WORKSPACE}/kubeconfig
+                    
+                    # Test the kubeconfig
+                    KUBECONFIG=${WORKSPACE}/kubeconfig kubectl get nodes
+                    
                     '''
                     
                     // Make deploy.sh executable
@@ -215,8 +219,8 @@ EOF
                     export KUBECONFIG=${WORKSPACE}/kubeconfig
                     cd ${WORKSPACE}/Telemedicine-app/kubernetes
                     
-                    # Run deploy script with explicit kubeconfig
-                    KUBECONFIG=${WORKSPACE}/kubeconfig ./deploy.sh
+                    # Run deploy script with explicit kubeconfig and skip prompts
+                    KUBECONFIG=${WORKSPACE}/kubeconfig KUBECTL_INTERACTIVE=false ./deploy.sh
                     
                     # Verify deployment
                     echo "Verifying deployment in namespace ${K8S_NAMESPACE}:"
