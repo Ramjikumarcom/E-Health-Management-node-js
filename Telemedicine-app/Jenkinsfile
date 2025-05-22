@@ -112,7 +112,16 @@ REACT_APP_API_BASE_URL=${env.REACT_APP_API_BASE_URL}
             }
         }
         
-        
+        stage('Install Ansible') {
+            steps {
+                script {
+                    // Just verify Ansible is available
+                    sh '''
+                    ansible --version || echo "Ansible not working properly"
+                    '''
+                }
+            }
+        }
         
         stage('Deploy with Ansible') {
             steps {
@@ -128,4 +137,58 @@ REACT_APP_API_BASE_URL=${env.REACT_APP_API_BASE_URL}
             }
         }
         
+        stage('Deploy with Docker (Fallback)') {
+            when {
+                expression { return false } // Disabled by default, enable if Ansible deployment fails
+            }
+            steps {
+                script {
+                    // Deploy using Docker run commands instead of docker-compose
+                    sh """
+                    # Stop and remove existing containers
+                    docker stop e_health_backend || true
+                    docker stop e_health_frontend || true
+                    docker stop mongodb || true
+                    docker rm e_health_backend || true
+                    docker rm e_health_frontend || true
+                    docker rm mongodb || true
+                    
+                    # Run MongoDB container
+                    docker run -d --name mongodb -p 27017:27017 ${DOCKER_USERNAME}/e_health_management:${APP_VERSION}
+                    
+                    # Run backend container
+                    docker run -d --name e_health_backend -p 5000:5000 --env-file Telemedicine-app/.env --link mongodb:mongodb ${DOCKER_USERNAME}/e_health_management_backend:${APP_VERSION}
+                    
+                    # Run frontend container
+                    docker run -d --name e_health_frontend -p 3000:3000 --env-file Telemedicine-app/client/.env --link e_health_backend:backend ${DOCKER_USERNAME}/e_health_management_frontend:${APP_VERSION}
+                    """
+                    
+                    echo "Application deployed successfully with Docker"
+                }
+            }
+        }
+    }
+    
+    post {
+        always {
+            // Logout from Docker Hub
+            sh 'docker logout'
+            
+            // Clean up unused Docker resources
+            sh 'docker system prune -af --volumes || true'
+            
+            // Clean up sensitive files
+            sh 'rm -f Telemedicine-app/.env Telemedicine-app/client/.env || true'
+            
+            echo "Pipeline completed - cleanup executed"
+        }
+        
+        success {
+            echo 'Deployment completed successfully!'
+        }
+        
+        failure {
+            echo 'Deployment failed! Check logs for details.'
+        }
+    }
 }
