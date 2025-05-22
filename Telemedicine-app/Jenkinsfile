@@ -19,8 +19,8 @@ pipeline {
         REACT_APP_API_BASE_URL = 'http://localhost:5000'
         // Deployment method: 'ansible', 'kubernetes', or 'docker'
         DEPLOYMENT_METHOD = 'kubernetes'
-        // Kubernetes config credentials
-        KUBECONFIG = credentials('kubeconfig-credential')
+        // Path to token-based kubeconfig file
+        KUBECONFIG_PATH = '/tmp/kube-jenkins/token-config.yaml'
         // Ansible inventory path
         ANSIBLE_INVENTORY = 'Telemedicine-app/ansible/inventory.ini'
     }
@@ -294,11 +294,11 @@ EOF
             }
             steps {
                 script {
-                    // Debug: Check if we can connect to the cluster
+                    // Debug: Check if we can connect to the cluster using the token-based kubeconfig
                     sh '''
                     echo "Checking Kubernetes cluster connection..."
                     export PATH=${HOME}/.local/bin:$PATH
-                    export KUBECONFIG=${KUBECONFIG}
+                    export KUBECONFIG=${KUBECONFIG_PATH}
                     kubectl cluster-info
                     kubectl get nodes
                     '''
@@ -306,7 +306,7 @@ EOF
                     // Verify kubectl can connect to the cluster
                     sh '''
                     export PATH=${HOME}/.local/bin:$PATH
-                    export KUBECONFIG=${KUBECONFIG}
+                    export KUBECONFIG=${KUBECONFIG_PATH}
                     
                     kubectl cluster-info || {
                         echo "Error: Cannot connect to Kubernetes cluster"
@@ -317,7 +317,7 @@ EOF
                     // Check if namespace exists and create it if not
                     sh '''
                     export PATH=${HOME}/.local/bin:$PATH
-                    export KUBECONFIG=${KUBECONFIG}
+                    export KUBECONFIG=${KUBECONFIG_PATH}
                     
                     kubectl get namespace telemedicine || kubectl create namespace telemedicine
                     '''
@@ -325,7 +325,7 @@ EOF
                     // Create base64 encoded JWT secret
                     sh '''
                     export PATH=${HOME}/.local/bin:$PATH
-                    export KUBECONFIG=${KUBECONFIG}
+                    export KUBECONFIG=${KUBECONFIG_PATH}
                     
                     JWT_SECRET_BASE64=$(echo -n "$JWT_SECRET" | base64)
                     
@@ -342,7 +342,7 @@ EOF
                     // Check if ingress controller is installed
                     sh '''
                     export PATH=${HOME}/.local/bin:$PATH
-                    export KUBECONFIG=${KUBECONFIG}
+                    export KUBECONFIG=${KUBECONFIG_PATH}
                     
                     if ! kubectl get ingressclass 2>/dev/null | grep -q "nginx"; then
                         echo "Warning: No ingress controller found. You may need to install one."
@@ -353,13 +353,13 @@ EOF
                     // Modify deploy.sh to use the correct kubeconfig
                     sh '''
                     # Add KUBECONFIG export to the beginning of deploy.sh
-                    sed -i "1a\\nexport KUBECONFIG=${KUBECONFIG}" Telemedicine-app/kubernetes/deploy.sh
+                    sed -i "1a\\nexport KUBECONFIG=${KUBECONFIG_PATH}" Telemedicine-app/kubernetes/deploy.sh
                     '''
                     
                     // Deploy using the deploy.sh script
                     sh '''
                     export PATH=${HOME}/.local/bin:$PATH
-                    export KUBECONFIG=${KUBECONFIG}
+                    export KUBECONFIG=${KUBECONFIG_PATH}
                     
                     cd Telemedicine-app/kubernetes
                     ./deploy.sh
@@ -368,7 +368,7 @@ EOF
                     // Verify deployment
                     sh '''
                     export PATH=${HOME}/.local/bin:$PATH
-                    export KUBECONFIG=${KUBECONFIG}
+                    export KUBECONFIG=${KUBECONFIG_PATH}
                     
                     echo "Checking deployment status..."
                     kubectl get pods -n telemedicine
