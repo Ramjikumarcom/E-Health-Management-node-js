@@ -17,6 +17,8 @@ pipeline {
         JWT_SECRET = 'your_jwt_secret_key_here'
         PORT = '5000'
         REACT_APP_API_BASE_URL = 'http://localhost:5000'
+        // Deployment method: 'ansible', 'kubernetes', or 'docker'
+        DEPLOYMENT_METHOD = 'kubernetes'
     }
     
     stages {
@@ -112,18 +114,26 @@ REACT_APP_API_BASE_URL=${env.REACT_APP_API_BASE_URL}
             }
         }
         
-        stage('Install Ansible') {
+        stage('Install Required Tools') {
             steps {
                 script {
-                    // Just verify Ansible is available
+                    // Verify Ansible is available
                     sh '''
                     ansible --version || echo "Ansible not working properly"
+                    '''
+                    
+                    // Check if kubectl is installed (for Kubernetes deployment)
+                    sh '''
+                    kubectl version --client || echo "kubectl not installed"
                     '''
                 }
             }
         }
         
         stage('Deploy with Ansible') {
+            when {
+                expression { return env.DEPLOYMENT_METHOD == 'ansible' }
+            }
             steps {
                 script {
                     // Run Ansible playbook
@@ -137,9 +147,40 @@ REACT_APP_API_BASE_URL=${env.REACT_APP_API_BASE_URL}
             }
         }
         
+        stage('Deploy with Kubernetes') {
+            when {
+                expression { return env.DEPLOYMENT_METHOD == 'kubernetes' }
+            }
+            steps {
+                script {
+                    // Create base64 encoded JWT secret
+                    sh '''
+                    JWT_SECRET_BASE64=$(echo -n "$JWT_SECRET" | base64)
+                    
+                    # Update the secret.yaml file with the actual JWT secret
+                    sed -i "s/JWT_SECRET: .*/JWT_SECRET: $JWT_SECRET_BASE64/" Telemedicine-app/kubernetes/secret.yaml
+                    '''
+                    
+                    // Deploy using the deploy.sh script
+                    sh '''
+                    cd Telemedicine-app/kubernetes
+                    ./deploy.sh
+                    '''
+                    
+                    // Verify deployment
+                    sh '''
+                    kubectl get pods -n telemedicine
+                    kubectl get svc -n telemedicine
+                    '''
+                    
+                    echo "Application deployed successfully with Kubernetes"
+                }
+            }
+        }
+        
         stage('Deploy with Docker (Fallback)') {
             when {
-                expression { return false } // Disabled by default, enable if Ansible deployment fails
+                expression { return env.DEPLOYMENT_METHOD == 'docker' }
             }
             steps {
                 script {
