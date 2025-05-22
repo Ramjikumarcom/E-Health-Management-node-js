@@ -157,12 +157,9 @@ REACT_APP_API_BASE_URL=${env.REACT_APP_API_BASE_URL}
                     sh """
                     # Print current context and available contexts
                     echo "Current Kubernetes context:"
-                    kubectl config current-context
+                    kubectl config current-context || true
                     echo "Available Kubernetes contexts:"
-                    kubectl config get-contexts
-                    
-                    # Ensure we're using minikube context
-                    kubectl config use-context minikube
+                    kubectl config get-contexts || true
                     
                     # Create namespace if it doesn't exist
                     kubectl get namespace ${K8S_NAMESPACE} || kubectl create namespace ${K8S_NAMESPACE}
@@ -171,28 +168,35 @@ REACT_APP_API_BASE_URL=${env.REACT_APP_API_BASE_URL}
                     kubectl cluster-info
                     """
                     
+                    // Copy kubeconfig from host to Jenkins workspace
+                    sh '''
+                    # Copy kubeconfig from host
+                    cp -f ~/.kube/config ${WORKSPACE}/kubeconfig
+                    chmod 600 ${WORKSPACE}/kubeconfig
+                    '''
+                    
                     // Make deploy.sh executable
                     sh '''
                     cd Telemedicine-app/kubernetes
                     chmod +x deploy.sh
                     '''
                     
-                    // Run the deploy.sh script with explicit namespace
+                    // Run the deploy.sh script with explicit kubeconfig
                     sh """
+                    export KUBECONFIG=${WORKSPACE}/kubeconfig
                     cd Telemedicine-app/kubernetes
                     
-                    # Add debug output to deploy.sh
-                    echo '#!/bin/bash' > deploy_debug.sh
-                    echo 'set -x' >> deploy_debug.sh
-                    cat deploy.sh >> deploy_debug.sh
-                    chmod +x deploy_debug.sh
-                    
-                    # Run with debug output
-                    ./deploy_debug.sh
+                    # Run deploy script with explicit kubeconfig
+                    KUBECONFIG=${WORKSPACE}/kubeconfig ./deploy.sh
                     
                     # Verify deployment
                     echo "Verifying deployment in namespace ${K8S_NAMESPACE}:"
-                    kubectl get all -n ${K8S_NAMESPACE}
+                    KUBECONFIG=${WORKSPACE}/kubeconfig kubectl get all -n ${K8S_NAMESPACE}
+                    """
+                    
+                    // Clean up kubeconfig
+                    sh """
+                    rm -f ${WORKSPACE}/kubeconfig
                     """
                     
                     echo "Application deployed successfully to Kubernetes"
