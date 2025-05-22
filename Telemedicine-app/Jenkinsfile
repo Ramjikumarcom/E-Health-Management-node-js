@@ -168,10 +168,39 @@ REACT_APP_API_BASE_URL=${env.REACT_APP_API_BASE_URL}
                     kubectl cluster-info
                     """
                     
-                    // Copy kubeconfig from host to Jenkins workspace
+                    // Use the Jenkins service account token for authentication
                     sh '''
-                    # Copy kubeconfig from host
-                    cp -f /home/ramji/.kube/config ${WORKSPACE}/kubeconfig
+                    # Apply the Jenkins service account if it doesn't exist
+                    kubectl apply -f ${WORKSPACE}/Telemedicine-app/kubernetes/jenkins-serviceaccount.yaml
+                    
+                    # Wait for the service account token to be created
+                    sleep 5
+                    
+                    # Get the token from the Jenkins service account
+                    TOKEN=$(kubectl get secret $(kubectl get serviceaccount jenkins -o jsonpath='{.secrets[0].name}') -o jsonpath='{.data.token}' | base64 --decode)
+                    
+                    # Create a kubeconfig file using the service account token
+                    cat > ${WORKSPACE}/kubeconfig << EOF
+apiVersion: v1
+kind: Config
+clusters:
+- cluster:
+    server: $(kubectl config view --minify -o jsonpath='{.clusters[0].cluster.server}')
+    insecure-skip-tls-verify: true
+  name: kubernetes
+contexts:
+- context:
+    cluster: kubernetes
+    user: jenkins
+  name: jenkins-context
+current-context: jenkins-context
+preferences: {}
+users:
+- name: jenkins
+  user:
+    token: ${TOKEN}
+EOF
+                    
                     chmod 600 ${WORKSPACE}/kubeconfig
                     '''
                     
