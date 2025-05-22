@@ -147,40 +147,47 @@ REACT_APP_API_BASE_URL=${env.REACT_APP_API_BASE_URL}
             }
         }
         
-        stage('Deploy to Kubernetes') {
+        stage('Install Kubernetes Tools') {
             steps {
                 script {
                     // Check if kubectl is installed
                     sh '''
                     if ! command -v kubectl &> /dev/null; then
-                        echo "kubectl is not installed. Skipping Kubernetes deployment."
-                        exit 0
+                        echo "kubectl is not installed. Installing..."
+                        curl -LO "https://dl.k8s.io/release/stable.txt"
+                        curl -LO "https://dl.k8s.io/release/$(cat stable.txt)/bin/linux/amd64/kubectl"
+                        chmod +x kubectl
+                        sudo mv kubectl /usr/local/bin/ || mv kubectl /tmp/
+                        export PATH=$PATH:/tmp
+                        echo "kubectl installed at $(which kubectl || echo 'installation failed')"
+                    else
+                        echo "kubectl is already installed at $(which kubectl)"
                     fi
-                    kubectl version --client
+                    kubectl version --client || echo "kubectl not working properly"
                     '''
-                    
+                }
+            }
+        }
+        
+        stage('Deploy to Kubernetes') {
+            steps {
+                script {
                     // Create Kubernetes namespace if it doesn't exist
                     sh """
                     kubectl get namespace ${K8S_NAMESPACE} || kubectl create namespace ${K8S_NAMESPACE}
                     """
                     
-                    // Apply Kubernetes manifests
+                    // Make deploy.sh executable
                     sh '''
                     cd Telemedicine-app/kubernetes
-                    kubectl apply -k .
+                    chmod +x deploy.sh
                     '''
                     
-                    // Wait for deployments to be ready
-                    sh """
-                    kubectl -n ${K8S_NAMESPACE} wait --for=condition=available --timeout=300s deployment/mongodb || true
-                    kubectl -n ${K8S_NAMESPACE} wait --for=condition=available --timeout=300s deployment/backend || true
-                    kubectl -n ${K8S_NAMESPACE} wait --for=condition=available --timeout=300s deployment/frontend || true
-                    """
-                    
-                    // Display running pods
-                    sh """
-                    kubectl -n ${K8S_NAMESPACE} get pods
-                    """
+                    // Run the deploy.sh script
+                    sh '''
+                    cd Telemedicine-app/kubernetes
+                    ./deploy.sh
+                    '''
                     
                     echo "Application deployed successfully to Kubernetes"
                 }
