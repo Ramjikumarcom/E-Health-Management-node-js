@@ -117,17 +117,9 @@ REACT_APP_API_BASE_URL=${env.REACT_APP_API_BASE_URL}
         stage('Install Ansible') {
             steps {
                 script {
-                    // Install Ansible if not already installed
+                    // Just verify Ansible is available
                     sh '''
-                    if ! command -v ansible &> /dev/null; then
-                        echo "Installing Ansible..."
-                        apt-get update -y || true
-                        apt-get install -y ansible python3-pip || true
-                        pip3 install docker || true
-                    else
-                        echo "Ansible is already installed"
-                    fi
-                    ansible --version
+                    ansible --version || echo "Ansible not working properly"
                     '''
                 }
             }
@@ -150,19 +142,8 @@ REACT_APP_API_BASE_URL=${env.REACT_APP_API_BASE_URL}
         stage('Install Kubernetes Tools') {
             steps {
                 script {
-                    // Check if kubectl is installed
+                    // Just verify kubectl is available
                     sh '''
-                    if ! command -v kubectl &> /dev/null; then
-                        echo "kubectl is not installed. Installing..."
-                        curl -LO "https://dl.k8s.io/release/stable.txt"
-                        curl -LO "https://dl.k8s.io/release/$(cat stable.txt)/bin/linux/amd64/kubectl"
-                        chmod +x kubectl
-                        sudo mv kubectl /usr/local/bin/ || mv kubectl /tmp/
-                        export PATH=$PATH:/tmp
-                        echo "kubectl installed at $(which kubectl || echo 'installation failed')"
-                    else
-                        echo "kubectl is already installed at $(which kubectl)"
-                    fi
                     kubectl version --client || echo "kubectl not working properly"
                     '''
                 }
@@ -172,26 +153,19 @@ REACT_APP_API_BASE_URL=${env.REACT_APP_API_BASE_URL}
         stage('Deploy to Kubernetes') {
             steps {
                 script {
-                    // Instead of trying to get the token, we'll use a more direct approach
-                    // by using the minikube context directly
+                    // Use the system's kubectl directly with minikube context
                     sh """
-                    # Ensure minikube is running
-                    minikube status || minikube start
+                    # Verify minikube is running
+                    minikube status
                     
-                    # Use minikube's built-in kubectl command
-                    minikube kubectl -- get namespace ${K8S_NAMESPACE} || minikube kubectl -- create namespace ${K8S_NAMESPACE}
+                    # Create namespace if it doesn't exist
+                    kubectl get namespace ${K8S_NAMESPACE} || kubectl create namespace ${K8S_NAMESPACE}
                     """
                     
                     // Make deploy.sh executable
                     sh '''
                     cd Telemedicine-app/kubernetes
                     chmod +x deploy.sh
-                    '''
-                    
-                    // Modify deploy.sh to use minikube's kubectl
-                    sh '''
-                    cd Telemedicine-app/kubernetes
-                    sed -i 's/kubectl/minikube kubectl --/g' deploy.sh
                     '''
                     
                     // Run the deploy.sh script
