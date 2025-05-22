@@ -162,18 +162,29 @@ REACT_APP_API_BASE_URL=${env.REACT_APP_API_BASE_URL}
                     
                     # Make the deploy.sh script executable
                     chmod +x Telemedicine-app/kubernetes/deploy.sh
+                    
+                    # Debug: List kubernetes directory contents
+                    ls -la Telemedicine-app/kubernetes/
                     '''
                     
                     // Deploy using the deploy.sh script
                     sh '''
                     cd Telemedicine-app/kubernetes
                     ./deploy.sh
+                    
+                    # Verify ingress was created
+                    kubectl get ingress -n telemedicine || echo "Ingress not found"
+                    
+                    # Check if ingress.yaml exists and is valid
+                    cat ingress.yaml
+                    kubectl apply -f ingress.yaml || echo "Failed to apply ingress.yaml"
                     '''
                     
                     // Verify deployment
                     sh '''
                     kubectl get pods -n telemedicine
                     kubectl get svc -n telemedicine
+                    kubectl get ingress -n telemedicine || echo "Ingress still not found"
                     '''
                     
                     echo "Application deployed successfully with Kubernetes"
